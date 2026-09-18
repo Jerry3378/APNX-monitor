@@ -1,5 +1,5 @@
 // plcworker.cpp
-// real_test.c 참조 — 펌웨어 MiniPLC.c 와 동일한 패킷 규칙으로 TX/RX 모니터링
+// APNX와 동일한 프레임 규칙으로 TX/RX 모니터링
 
 #include "plcworker.h"
 #include "protocol.h"
@@ -27,7 +27,7 @@ static QString toHex(const uint8_t *buf, size_t len) {
     return s.trimmed().toUpper();
 }
 
-// real_test.c 의 패킷 빌드 방식을 그대로 따름: STX/LEN/ID/CMD/CMD_TYPE/DATA_TYPE/COUNT + ADDR(LE) [+DATA] + CRC(LE)
+// APNX프로토콜 방식을 그대로 따름: STX/LEN/ID/CMD/CMD_TYPE/DATA_TYPE/COUNT + ADDR(LE) [+DATA] + CRC(LE)
 static int buildWritePacket(uint8_t *pkt, uint16_t addr, uint8_t data_type, const uint8_t *data, uint8_t count, uint8_t cmd = CMD_WRITE) {
     int off = 0;
     pkt[off++] = 0x02;
