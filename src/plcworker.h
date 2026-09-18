@@ -26,6 +26,6 @@ private:
     bool m_simulation = false;
     bool m_stopRequested = false;
 
-    void runRealTests(int fd);      // real_test.c 의 TEST 1~6 + NAK 일부를 그대로 재현
-    void runSimulatedTests();       // 하드웨어 없이 TX/RX 로그만 생성
+    void runRealTests(int fd);      
+    void runSimulatedTests();      
 };
