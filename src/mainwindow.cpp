@@ -159,7 +159,7 @@ void MainWindow::onSensorDataUpdated(const QVector<double> &values, quint8 cmd, 
     for (int i=0;i<CHANNELS;i++) {
         if (i < values.size()) {
             int v = static_cast<int>(values[i]);
-            // test.txt처럼 천 단위 콤마
+            // 천 단위로 표시
             m_value[i]->setText(QString("%L1").arg(v));
         } else m_value[i]->setText("--");
     }
