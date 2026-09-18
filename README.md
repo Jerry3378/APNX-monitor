@@ -1,62 +1,578 @@
-# APNX_qt_monitor — User Space Packet Monitor (Qt)
+# APNX Monitor
 
-APNX프로토콜을 송수신을 모니터링하는 Qt 프로그램. 
+Qt/C++ user-space application for monitoring and testing the **APNX protocol** through the Linux USB device driver.
 
-## 구조
+The monitor communicates with the APNX device through `/dev/myusb0`, generates APNX protocol packets, sends READ/WRITE requests, receives responses, and displays the received values and protocol traffic through a Qt-based GUI.
 
+---
+
+## Overview
+
+APNX Monitor is the host-side application of the APNX project.
+
+It provides a graphical interface for:
+
+* Connecting to the APNX USB device
+* Sending APNX READ/WRITE requests
+* Receiving and decoding APNX responses
+* Monitoring protocol TX/RX packets
+* Displaying logical memory values
+* Repeated READ/WRITE testing
+* Running the application in hardware or simulation mode
+
+```text
+┌───────────────────────────┐
+│       APNX Monitor        │
+│         Qt / C++          │
+│                           │
+│  Device Control           │
+│  Analog Tags              │
+│  Protocol Log             │
+└─────────────┬─────────────┘
+              │
+        /dev/myusb0
+              │
+              ▼
+┌───────────────────────────┐
+│     APNX USB Driver       │
+│       Linux Kernel        │
+└─────────────┬─────────────┘
+              │
+          USB Bulk
+              │
+              ▼
+┌───────────────────────────┐
+│      APNX Firmware        │
+│       AVR + LUFA          │
+└───────────────────────────┘
 ```
-APNX_qt_monitor/
-├── CMakeLists.txt
-└── src/
-    ├── main.cpp          # QApplication 시작점
-    ├── mainwindow.h/.cpp # test.txt 카드 디자인 — DEVICE CONTROL / ANALOG TAGS / PROTOCOL LOG
-    ├── plcworker.h/.cpp  # /dev/myusb0 에서 TX/RX, real_test.c 참조
-    └── protocol.h        # real_test.c와 동일 — STX/LEN/ID/CMD/COUNT/ADDR+DATA/CRC(Modbus 0xA001 LE)
+
+---
+
+## Features
+
+* Qt 6 / C++ GUI
+* Linux device-file based communication
+* APNX protocol packet generation and parsing
+* READ / WRITE command support
+* CRC16-Modbus calculation
+* Logical address handling
+* TX/RX protocol logging
+* Hardware mode
+* Simulation mode
+* Repeated READ/WRITE test
+* Real-time display of received tag values
+
+---
+
+## Architecture
+
+The application is divided into three main responsibilities.
+
+```text
+┌──────────────────────────────────────┐
+│              Qt GUI                 │
+│                                      │
+│  Device Control                     │
+│  Analog Tags                        │
+│  Protocol Log                       │
+└─────────────────┬────────────────────┘
+                  │
+                  ▼
+┌──────────────────────────────────────┐
+│             PLC Worker               │
+│                                      │
+│  Device I/O                         │
+│  Test Execution                     │
+│  TX/RX Handling                     │
+└─────────────────┬────────────────────┘
+                  │
+                  ▼
+┌──────────────────────────────────────┐
+│          APNX Protocol               │
+│                                      │
+│  Packet Construction                 │
+│  Packet Parsing                      │
+│  CRC Calculation                     │
+└─────────────────┬────────────────────┘
+                  │
+                  ▼
+             /dev/myusb0
 ```
 
-## 참조 — real_test.c
+### Main Components
 
-- **패킷**: `STX 0x02 | LEN | ID 0x01 | CMD(READ 0/WRITE 1/ACK 5/6/NAK 15) | CMD_TYPE 0x01 | DATA_TYPE | COUNT | ADDR(LE 2B) [+DATA] | CRC(0xA001 LE)`
+| File                | Role                                              |
+| ------------------- | ------------------------------------------------- |
+| `main.cpp`          | Qt application entry point                        |
+| `mainwindow.h/.cpp` | GUI and user interaction                          |
+| `plcworker.h/.cpp`  | Device I/O and repeated READ/WRITE test execution |
+| `protocol.h`        | APNX packet definitions and protocol handling     |
+| `CMakeLists.txt`    | Build configuration                               |
 
-- **주소**: `0x100 INPUT / 0x200 OUTPUT / 0x300 DATA / 0x400 FLAG` — 이 모니터는 `0x300` DATA 영역의 4개 주소 `0x300, 0x302, 0x304, 0x306` (16-bit, count=4)를 사용
+---
 
-- **CRC**: `real_test.c:55 calculate_crc()` 그대로 (init `0xFFFF`, `0xA001`, LE)
+## Device Interface
 
-- **흐름**: `plcworker.cpp:104 runRealTests()` 에서 `WRITE 4 tags → READ 4 tags` 를 정지 전까지 랜덤값으로 계속 반복, `RX`의 `DATA(7+i*2)` 4개를 `아날로그 태그` 4개 박스에 표시
+The monitor communicates with the Linux USB driver through a device file.
 
-## UI — test.txt 디자인 (여백 + 정보 위계 + 카드)
+```text
+/dev/myusb0
+```
 
-- **Header**: `APNX Monitor` + `● Connected/Disconnected`
+The application uses standard Linux file operations:
 
-- **DEVICE CONTROL**: `Device /dev/myusb0`, `Mode Hardware/Simulation`, `[Connect] [Start] [Stop]`
+```text
+open()
+  ↓
+write()
+  ↓
+read()
+  ↓
+close()
+```
 
-- **ANALOG TAGS**: `TAG1(0x0300) ~ TAG4(0x0306)` 2x2 카드 그리드, 각 카드 `여백 14px`, `값 22px bold`, 천단위 콤마
+The Linux USB driver handles the actual USB communication with the APNX firmware.
 
-- **PROTOCOL LOG**: `TX: 02 0B ...` / `RX: ...` / `✓ READ ACK` 모노스페이스, 랜덤 4개 값 반복 로그
+```text
+Qt Application
+      │
+      │ open/read/write
+      ▼
+/dev/myusb0
+      │
+      ▼
+Linux USB Driver
+      │
+      │ USB Bulk IN/OUT
+      ▼
+APNX Firmware
+```
 
-## 장치
+---
 
-- 드라이버는 `APNX/driver` 그대로 유지 — `/dev/myusb0` (fallback `/dev/myusb`) 생성
-- 이 모니터는 `/dev/myusb0` 를 `open/read/write` 로 다룸 
+## APNX Protocol
 
-## 빌드 / 실행
+The monitor implements the host-side representation of the APNX packet format.
+
+The current packet structure is:
+
+```text
+┌─────┬─────┬────┬─────┬──────────┬───────────┬───────┬─────────┬─────┐
+│ STX │ LEN │ ID │ CMD │ CMD_TYPE │ DATA_TYPE │ COUNT │ PAYLOAD │ CRC │
+└─────┴─────┴────┴─────┴──────────┴───────────┴───────┴─────────┴─────┘
+```
+
+### Commands
+
+| Command   |  Value | Description          |
+| --------- | -----: | -------------------- |
+| READ      | `0x00` | Read logical memory  |
+| WRITE     | `0x01` | Write logical memory |
+| ACK_READ  | `0x05` | READ response        |
+| ACK_WRITE | `0x06` | WRITE response       |
+| NAK       | `0x0F` | Error response       |
+
+### Command Type
+
+The current implementation uses:
+
+```text
+CMD_TYPE = 0x01
+```
+
+### Data Type
+
+The protocol supports:
+
+| Data Type |    Size |
+| --------- | ------: |
+| 8-bit     |  1 byte |
+| 16-bit    | 2 bytes |
+| 32-bit    | 4 bytes |
+| 64-bit    | 8 bytes |
+
+---
+
+## Logical Address Map
+
+The monitor uses the same logical address space as the APNX firmware.
+
+| Region | Base Address |
+| ------ | -----------: |
+| INPUT  |      `0x100` |
+| OUTPUT |      `0x200` |
+| DATA   |      `0x300` |
+| FLAG   |      `0x400` |
+
+For the current monitoring test, four 16-bit DATA values are used:
+
+```text
+0x300
+0x302
+0x304
+0x306
+```
+
+These values are displayed as four analog tags in the GUI.
+
+```text
+┌──────────────┐  ┌──────────────┐
+│ TAG 1        │  │ TAG 2        │
+│ 0x0300       │  │ 0x0302       │
+│ 12,345       │  │ 23,456       │
+└──────────────┘  └──────────────┘
+
+┌──────────────┐  ┌──────────────┐
+│ TAG 3        │  │ TAG 4        │
+│ 0x0304       │  │ 0x0306       │
+│ 34,567       │  │ 45,678       │
+└──────────────┘  └──────────────┘
+```
+
+---
+
+## CRC16
+
+The APNX protocol uses a Modbus-compatible CRC16 algorithm.
+
+```text
+Initial value : 0xFFFF
+Polynomial    : 0xA001
+Processing    : LSB-first
+```
+
+The monitor calculates the CRC when constructing TX packets and verifies/parses the corresponding response according to the APNX protocol.
+
+---
+
+## READ / WRITE Test
+
+The monitor includes a repeated READ/WRITE test sequence.
+
+```text
+Generate values
+      │
+      ▼
+WRITE 4 DATA tags
+      │
+      ▼
+Send through /dev/myusb0
+      │
+      ▼
+Receive WRITE ACK
+      │
+      ▼
+READ 4 DATA tags
+      │
+      ▼
+Receive READ ACK
+      │
+      ▼
+Decode RX payload
+      │
+      ▼
+Update GUI
+      │
+      └───────────────┐
+                      │
+                      ▼
+                 Repeat
+```
+
+The current test uses:
+
+```text
+DATA_TYPE = 16-bit
+COUNT     = 4
+
+Address:
+0x300
+0x302
+0x304
+0x306
+```
+
+The test continues until the user presses `Stop`.
+
+---
+
+## Protocol Log
+
+The GUI provides a protocol log for observing transmitted and received packets.
+
+Example:
+
+```text
+TX: 02 0B 01 01 01 01 04 ...
+RX: 02 ... 05 ...
+✓ WRITE ACK
+
+TX: 02 ... READ ...
+RX: 02 ... 05 ... DATA ...
+✓ READ ACK
+```
+
+The log is intended to make packet-level communication visible while testing the complete APNX communication path.
+
+---
+
+## GUI
+
+The interface is organized into three major areas.
+
+### Device Control
+
+```text
+DEVICE CONTROL
+
+Device: /dev/myusb0
+Mode:   Hardware / Simulation
+
+[ Connect ] [ Start ] [ Stop ]
+```
+
+The device control area manages the communication mode and test execution.
+
+### Analog Tags
+
+Four logical DATA addresses are displayed as individual tag cards.
+
+```text
+TAG1   0x0300
+TAG2   0x0302
+TAG3   0x0304
+TAG4   0x0306
+```
+
+Received values are updated from the READ response.
+
+### Protocol Log
+
+The protocol log displays TX/RX packets in hexadecimal form and reports successful READ/WRITE responses.
+
+---
+
+## Simulation Mode
+
+The monitor supports a simulation mode for GUI and application-level testing without the physical APNX device.
+
+```text
+Simulation Mode
+      │
+      ▼
+Generate TX packet
+      │
+      ▼
+Simulated RX response
+      │
+      ▼
+Decode response
+      │
+      ▼
+Update GUI
+```
+
+This allows the GUI and monitoring flow to be tested without requiring the USB hardware.
+
+---
+
+## Hardware Mode
+
+In hardware mode, the application communicates with the actual APNX device through the Linux driver.
+
+```text
+APNX Monitor
+     │
+     │ write()
+     ▼
+/dev/myusb0
+     │
+     ▼
+APNX USB Driver
+     │
+     ▼
+USB Bulk OUT
+     │
+     ▼
+APNX Firmware
+```
+
+The response follows the reverse path:
+
+```text
+APNX Firmware
+     │
+     ▼
+USB Bulk IN
+     │
+     ▼
+APNX USB Driver
+     │
+     ▼
+/dev/myusb0
+     │
+     ▼
+APNX Monitor
+```
+
+---
+
+## Build
+
+### Requirements
+
+* Linux
+* Qt 6
+* CMake
+* C++ compiler
+* APNX USB driver for hardware mode
+
+### Build
 
 ```bash
-cd APNX_qt_monitor
-mkdir -p build && cd build
-cmake .. && make -j$(nproc)
-./APNX_qt_monitor          # 또는 QT_QPA_PLATFORM=offscreen ./APNX_qt_monitor (headless 테스트)
+git clone https://github.com/Jerry3378/APNX-monitor.git
+cd APNX-monitor
+
+mkdir -p build
+cd build
+
+cmake ..
+make -j$(nproc)
 ```
 
-- **실제 장치**: `Connect` 또는 `Start` -> `실제 장치 연결 (/dev/myusb0)` -> 랜덤 4개 값 `WRITE/READ` 반복, 박스에 RX 값 표시
+---
 
-- **시뮬레이션**: `Start` (하드웨어 없어도 동일 TX/RX 가짜 에코로 박스 갱신)
+## Run
 
-- **정지**: `Stop` 전까지 무한 반복
+### Hardware Mode
 
-## Git으로 보내기 — 레포지토리 아직 없을 때
+Connect the APNX device and make sure the Linux driver has created:
 
-이 폴더 자체가 하나의 git 레포가 되도록 정리됨. 그대로 보내면 됨:
+```text
+/dev/myusb0
+```
 
-- `build/` 는 `.gitignore` 로 제외 — 소스만 커밋됨
-- 펌웨어 `APNX_firmware` / 드라이버 `APNX/driver` 는 이 레포에 포함 안함 (분리)
+Then run:
+
+```bash
+./APNX_qt_monitor
+```
+
+Connect to the device and start the test.
+
+The monitor repeatedly performs:
+
+```text
+WRITE 4 tags
+      ↓
+READ 4 tags
+      ↓
+Display RX values
+      ↓
+Repeat
+```
+
+### Simulation Mode
+
+Simulation mode can be used without the physical APNX device.
+
+```bash
+./APNX_qt_monitor
+```
+
+Then select simulation mode from the GUI and start the test.
+
+---
+
+## Project Structure
+
+```text
+APNX-monitor/
+│
+├── CMakeLists.txt
+├── README.md
+│
+└── src/
+    ├── main.cpp
+    ├── mainwindow.h
+    ├── mainwindow.cpp
+    ├── plcworker.h
+    ├── plcworker.cpp
+    └── protocol.h
+```
+
+---
+
+## Related Components
+
+APNX is implemented as three independent repositories.
+
+| Component       | Repository                                                      | Role                                     |
+| --------------- | --------------------------------------------------------------- | ---------------------------------------- |
+| APNX Monitor    | [APNX-monitor](https://github.com/Jerry3378/APNX-monitor)       | Qt/C++ user-space monitoring and control |
+| APNX USB Driver | [APNX-usb-driver](https://github.com/Jerry3378/APNX-usb-driver) | Linux kernel USB driver                  |
+| APNX Firmware   | [APNX-firmware](https://github.com/Jerry3378/APNX-firmware)     | AVR USB device firmware                  |
+
+Overall communication path:
+
+```text
+┌──────────────────────┐
+│     APNX Monitor     │
+│       Qt / C++       │
+└──────────┬───────────┘
+           │
+       /dev/myusb0
+           │
+           ▼
+┌──────────────────────┐
+│   APNX USB Driver    │
+│     Linux Kernel     │
+└──────────┬───────────┘
+           │
+       USB Bulk
+           │
+           ▼
+┌──────────────────────┐
+│    APNX Firmware     │
+│      AVR + LUFA      │
+└──────────────────────┘
+```
+
+---
+
+## Design Focus
+
+The monitor is intentionally implemented as a thin user-space layer over the Linux device interface.
+
+The main responsibilities are:
+
+```text
+User Interface
+      │
+      ├── Device control
+      ├── Data visualization
+      └── Protocol log
+              │
+              ▼
+Protocol Handling
+      │
+      ├── Packet construction
+      ├── Packet parsing
+      └── CRC calculation
+              │
+              ▼
+Linux Device Interface
+      │
+      └── /dev/myusb0
+```
+
+This separation keeps USB transport handling inside the Linux kernel driver while the Qt application focuses on protocol testing, visualization, and user interaction.
+
+---
+
+## License
+
+This repository contains the APNX host-side monitoring application.
+
+See the source files and repository history for project-specific licensing information.
