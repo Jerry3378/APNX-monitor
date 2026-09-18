@@ -1,5 +1,4 @@
 // protocol.h
-// real_test.c 와 동일한 규칙 — 펌웨어(MiniPLC.c) 참조
 //  형식: STX 0x02 | LEN | ID 0x01 | CMD | CMD_TYPE 0x01 | DATA_TYPE | COUNT | ADDR(LE 2B) [+DATA] | CRC(Modbus 0xA001, LE)
 //  주소: 0x100 INPUT, 0x200 OUTPUT, 0x300 DATA, 0x400 FLAG
 //  데이터 크기: 1<<DATA_TYPE (0:1B, 1:2B, 2:4B, 3:8B)
@@ -43,7 +42,7 @@ inline uint16_t calculate_crc(const uint8_t *buf, size_t len) {
     return crc;
 }
 
-// 파싱 결과 — real_test.c 처럼 주소+데이터 함께 보관
+// 파싱 결과 —  주소+데이터 함께 보관
 struct PlcPacket {
     uint8_t stx = 0;
     uint8_t len = 0;
@@ -57,7 +56,7 @@ struct PlcPacket {
     uint16_t crc = 0;
 };
 
-// 간단 파싱: real_test 처럼 헤더+주소+데이터 분리, CRC는 LE로 읽음
+// 간단 파싱: 헤더+주소+데이터 분리, CRC는 LE로 읽음
 inline bool parsePlcPacket(const uint8_t *buf, size_t size, PlcPacket &out) {
     if (size < 9) return false;
     out.stx = buf[0];
