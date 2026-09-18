@@ -1,0 +1,18 @@
+# APNX_qt_monitor — user space git
+build/
+*.o
+*.so
+*.a
+*.pro.user
+*.qmake.stash
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+*~
+*.swp
+.DS_Store
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.autosave
